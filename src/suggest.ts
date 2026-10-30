@@ -32,7 +32,7 @@ const LANGUAGE = { de: "German", en: "English" };
 
 const PROVIDERS = {
   ollama: { baseUrl: "http://127.0.0.1:11434/v1", model: "gemma4:e2b", keyName: undefined },
-  google: { baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai", model: "gemma-4-26b-a4b-it", keyName: "GEMINI_API_KEY" },
+  google: { baseUrl: "https://generativelanguage.googleapis.com/v1beta", model: "gemma-4-26b-a4b-it", keyName: "GEMINI_API_KEY" },
   lovable: { baseUrl: "https://ai.gateway.lovable.dev/v1", model: "google/gemini-3.7-flash", keyName: "LOVABLE_API_KEY" },
 };
 
@@ -48,16 +48,19 @@ export function llmConfig(env: NodeJS.ProcessEnv = process.env) {
   };
 }
 
-export function buildMessages(input: SuggestInput) {
+function buildText(input: SuggestInput): string {
   const history = input.history.map((h) => `"${h.fragments}" meant "${h.sentence}"`).join("\n");
-  const text = `Write the sentences in ${LANGUAGE[input.language]}.
+  return `Write the sentences in ${LANGUAGE[input.language]}.
 <input>
 Fragments: ${input.fragments || "(none, use the photo)"}
 Profile: ${input.profile || "(none)"}
 Past choices:
 ${history || "(none)"}
 </input>`;
-  const content: unknown[] = [{ type: "text", text }];
+}
+
+export function buildMessages(input: SuggestInput) {
+  const content: unknown[] = [{ type: "text", text: buildText(input) }];
   if (input.image) {
     const url = `data:${input.image.mime};base64,${input.image.data.toString("base64")}`;
     content.push({ type: "image_url", image_url: { url } });
@@ -66,6 +69,17 @@ ${history || "(none)"}
     { role: "system", content: SYSTEM },
     { role: "user", content },
   ];
+}
+
+export function buildGoogleRequest(input: SuggestInput) {
+  const parts: unknown[] = [{ text: buildText(input) }];
+  if (input.image) parts.push({ inlineData: { mimeType: input.image.mime, data: input.image.data.toString("base64") } });
+  return {
+    systemInstruction: { parts: [{ text: SYSTEM }] },
+    contents: [{ role: "user", parts }],
+    // Without this Gemma often thinks past the timeout or fails with a 500.
+    generationConfig: { temperature: 0.3, thinkingConfig: { thinkingLevel: "MINIMAL" } },
+  };
 }
 
 export function parseSentences(raw: string): string[] {
@@ -87,32 +101,66 @@ export function parseSentences(raw: string): string[] {
   return [...new Set(clean)].slice(0, 3);
 }
 
-export async function suggest(input: SuggestInput): Promise<string[]> {
-  const { provider, baseUrl, model, keyName, apiKey } = llmConfig();
-  if (keyName && !apiKey) throw new HttpError(503, `${keyName} is not set on the server`);
+interface GoogleResponse {
+  candidates?: { content?: { parts?: { text?: string; thought?: boolean }[] } }[];
+}
+
+// Google's OpenAI-compatible route returned 500s for Gemma, so it uses the native route.
+async function complete(input: SuggestInput): Promise<Response> {
+  const { provider, baseUrl, model, apiKey } = llmConfig();
+  if (provider === "google") {
+    return fetch(`${baseUrl}/models/${model}:generateContent`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey ?? "" },
+      body: JSON.stringify(buildGoogleRequest(input)),
+      signal: AbortSignal.timeout(12_000),
+    });
+  }
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
   if (apiKey && provider === "lovable") headers["Lovable-API-Key"] = apiKey;
+  return fetch(`${baseUrl}/chat/completions`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ model, messages: buildMessages(input), temperature: 0.3 }),
+    signal: AbortSignal.timeout(180_000),
+  });
+}
 
-  for (let attempt = 0; attempt < 2; attempt++) {
+async function readAnswer(response: Response, provider: string): Promise<string> {
+  if (provider === "google") {
+    const body = (await response.json()) as GoogleResponse;
+    const parts = body.candidates?.[0]?.content?.parts ?? [];
+    return parts.filter((p) => !p.thought).map((p) => p.text ?? "").join("");
+  }
+  const body = (await response.json()) as ChatResponse;
+  return body.choices?.[0]?.message?.content ?? "";
+}
+
+export async function suggest(input: SuggestInput): Promise<string[]> {
+  const { provider, keyName, apiKey } = llmConfig();
+  if (keyName && !apiKey) throw new HttpError(503, `${keyName} is not set on the server`);
+
+  let failed = false;
+  for (let attempt = 0; attempt < 3; attempt++) {
     let response: Response;
     try {
-      response = await fetch(`${baseUrl}/chat/completions`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ model, messages: buildMessages(input), temperature: 0.3 }),
-        signal: AbortSignal.timeout(180_000),
-      });
+      response = await complete(input);
     } catch {
-      throw new HttpError(502, "The sentence model could not be reached");
+      failed = true;
+      continue;
     }
     if (!response.ok) {
       console.error(`suggest failed: provider=${provider} status=${response.status}`);
+      if (response.status >= 500) {
+        failed = true;
+        continue;
+      }
       throw new HttpError(502, "The sentence model returned an error");
     }
-    const body = (await response.json()) as ChatResponse;
-    const sentences = parseSentences(body.choices?.[0]?.message?.content ?? "");
+    failed = false;
+    const sentences = parseSentences(await readAnswer(response, provider));
     if (sentences.length === 3) return sentences;
   }
-  throw new HttpError(502, "The sentence model gave an unusable answer. Please try again.");
+  throw new HttpError(502, failed ? "The sentence model could not be reached" : "The sentence model gave an unusable answer. Please try again.");
 }
