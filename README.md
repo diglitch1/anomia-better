@@ -10,14 +10,15 @@ Anomia is a hackathon prototype, not a medical device.
 
 ## Run it
 
-Needs Node 20 or newer, and [Ollama](https://ollama.com) for local Gemma 4.
+Needs Node 20 or newer, an ElevenLabs key and a Gemini API key from Google AI Studio.
 
 ```sh
-ollama pull gemma4:e2b
 npm install
-cp .env.example .env   # add ELEVENLABS_API_KEY and DEFAULT_VOICE_ID
+cp .env.example .env   # add ELEVENLABS_API_KEY, DEFAULT_VOICE_ID and GEMINI_API_KEY
 npm start
 ```
+
+To keep photos and fragments on your own computer, install [Ollama](https://ollama.com), run `ollama pull gemma4:e2b` and set `LLM_PROVIDER=ollama`. This needs a fast machine.
 
 Open http://127.0.0.1:3000. Browsers only allow the microphone on localhost or HTTPS, so a phone needs an HTTPS address. Typing and photos work either way.
 
@@ -26,7 +27,7 @@ Open http://127.0.0.1:3000. Browsers only allow the microphone on localhost or H
 | Data | Where it goes |
 |---|---|
 | Profile and past choices | Stored on the device, and sent to the sentence model with each request |
-| Photo and fragments | The sentence model: your computer with Ollama, or Lovable's gateway with `LLM_PROVIDER=lovable` |
+| Photo and fragments | The sentence model: Google by default, your computer with Ollama, or Lovable's gateway |
 | Voice recordings | ElevenLabs, for speech-to-text. Type instead to avoid this |
 | Confirmed sentence | ElevenLabs, to speak it |
 | Voice samples | ElevenLabs, to create the clone |

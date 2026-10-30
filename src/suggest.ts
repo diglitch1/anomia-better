@@ -30,13 +30,21 @@ Example: fragments "wa... cup... hot... no"
 
 const LANGUAGE = { de: "German", en: "English" };
 
+const PROVIDERS = {
+  ollama: { baseUrl: "http://127.0.0.1:11434/v1", model: "gemma4:e2b", keyName: undefined },
+  google: { baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai", model: "gemma-4-26b-a4b-it", keyName: "GEMINI_API_KEY" },
+  lovable: { baseUrl: "https://ai.gateway.lovable.dev/v1", model: "google/gemini-3.7-flash", keyName: "LOVABLE_API_KEY" },
+};
+
 export function llmConfig(env: NodeJS.ProcessEnv = process.env) {
-  const lovable = env.LLM_PROVIDER === "lovable";
+  const provider = env.LLM_PROVIDER === "google" || env.LLM_PROVIDER === "lovable" ? env.LLM_PROVIDER : "ollama";
+  const { baseUrl, model, keyName } = PROVIDERS[provider];
   return {
-    provider: lovable ? "lovable" : "ollama",
-    baseUrl: env.LLM_BASE_URL || (lovable ? "https://ai.gateway.lovable.dev/v1" : "http://127.0.0.1:11434/v1"),
-    model: env.LLM_MODEL || (lovable ? "google/gemini-3.7-flash" : "gemma4:e2b"),
-    apiKey: lovable ? env.LOVABLE_API_KEY : undefined,
+    provider,
+    baseUrl: env.LLM_BASE_URL || baseUrl,
+    model: env.LLM_MODEL || model,
+    keyName,
+    apiKey: keyName ? env[keyName] : undefined,
   };
 }
 
@@ -80,13 +88,11 @@ export function parseSentences(raw: string): string[] {
 }
 
 export async function suggest(input: SuggestInput): Promise<string[]> {
-  const { provider, baseUrl, model, apiKey } = llmConfig();
-  if (provider === "lovable" && !apiKey) throw new HttpError(503, "LOVABLE_API_KEY is not set on the server");
+  const { provider, baseUrl, model, keyName, apiKey } = llmConfig();
+  if (keyName && !apiKey) throw new HttpError(503, `${keyName} is not set on the server`);
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (apiKey) {
-    headers.Authorization = `Bearer ${apiKey}`;
-    headers["Lovable-API-Key"] = apiKey;
-  }
+  if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+  if (apiKey && provider === "lovable") headers["Lovable-API-Key"] = apiKey;
 
   for (let attempt = 0; attempt < 2; attempt++) {
     let response: Response;

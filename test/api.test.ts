@@ -2,7 +2,7 @@ import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp, parseHistory } from "../src/app.ts";
 import { LruCache } from "../src/lru.ts";
-import { buildMessages, parseSentences } from "../src/suggest.ts";
+import { buildMessages, llmConfig, parseSentences } from "../src/suggest.ts";
 import type { VoiceProvider } from "../src/voice.ts";
 
 const VOICE = "abcDEF1234567890";
@@ -196,6 +196,17 @@ describe("POST /api/suggest", () => {
     expect(big.body.error).toBeTruthy();
     const svg = await request(app).post("/api/suggest").attach("image", Buffer.from("x"), { filename: "a.svg", contentType: "image/svg+xml" });
     expect(svg.status).toBe(400);
+  });
+});
+
+describe("llmConfig", () => {
+  it("uses hosted Gemma with the Gemini key", () => {
+    const config = llmConfig({ LLM_PROVIDER: "google", GEMINI_API_KEY: "k" });
+    expect(config).toMatchObject({ provider: "google", model: "gemma-4-26b-a4b-it", apiKey: "k" });
+  });
+
+  it("falls back to local Ollama and allows a model override", () => {
+    expect(llmConfig({ LLM_MODEL: "other" })).toMatchObject({ provider: "ollama", model: "other", apiKey: undefined });
   });
 });
 
