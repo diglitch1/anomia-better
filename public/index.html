@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f7f4ee">
+  <title>Anomia</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Anomia</h1>
+      <button id="open-settings" class="quiet" type="button" data-t="settings"></button>
+    </header>
+
+    <section id="compose">
+      <button id="record" class="record" type="button" aria-pressed="false">
+        <span class="dot" aria-hidden="true"></span>
+        <span id="record-label" data-t="speak"></span>
+      </button>
+      <label for="text" class="label" data-t="orType"></label>
+      <input id="text" type="text" maxlength="300" autocomplete="off">
+      <div class="row">
+        <label class="button secondary" for="photo" id="photo-label" data-t="addPhoto"></label>
+        <input id="photo" class="hidden-input" type="file" accept="image/*" capture="environment">
+        <button id="remove-photo" class="quiet" type="button" hidden data-t="removePhoto"></button>
+      </div>
+      <img id="preview" alt="" hidden>
+      <button id="find" class="primary" type="button" data-t="find"></button>
+    </section>
+
+    <p id="status" role="status" aria-live="polite"></p>
+
+    <section id="results" hidden>
+      <h2 data-t="whichOne"></h2>
+      <div id="cards"></div>
+      <button id="none" class="secondary wide" type="button" data-t="none"></button>
+    </section>
+  </main>
+
+  <dialog id="settings">
+    <form method="dialog" class="sheet">
+      <h2 data-t="settings"></h2>
+
+      <label class="label" for="language" data-t="language"></label>
+      <select id="language">
+        <option value="de">Deutsch</option>
+        <option value="en">English</option>
+      </select>
+
+      <label class="label" for="profile" data-t="aboutMe"></label>
+      <textarea id="profile" rows="4" maxlength="2000"></textarea>
+
+      <h3 data-t="myVoice"></h3>
+      <p id="voice-state"></p>
+      <label class="label" for="voice-name" data-t="voiceName"></label>
+      <input id="voice-name" type="text" maxlength="60" autocomplete="off">
+      <label class="label" for="samples" data-t="samples"></label>
+      <input id="samples" type="file" accept="audio/*,video/*" multiple>
+      <label class="check"><input id="consent" type="checkbox"> <span data-t="consent"></span></label>
+      <button id="clone" class="primary" type="button" data-t="cloneVoice"></button>
+      <p id="voice-status" role="status" aria-live="polite"></p>
+
+      <button id="clear" class="secondary wide" type="button" data-t="clear"></button>
+      <button class="quiet wide" value="close" data-t="close"></button>
+    </form>
+  </dialog>
+
+  <script src="app.js" type="module"></script>
+</body>
+</html>
